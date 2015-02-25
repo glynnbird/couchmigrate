@@ -2,7 +2,7 @@ var fs = require('fs'),
   async = require('async'),
   argv = require('yargs')
    .usage("CouchDB design document migration")
-   .usage('Usage: $0 --dd <design document filename> -db <name of database>')
+   .usage('Usage: $0 --dd <design document filename> --db <name of database>')
    .demand(['dd','db'])
    .argv;
   
