@@ -119,17 +119,16 @@ var clone = function(x) {
   return JSON.parse(JSON.stringify(x));
 };
 
-// load the design document
-var dd_filename = argv.dd;
-fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
+var migrate = function(err, data) {
   if(err) {
     console.log("Cannot find file", dd_filename);
     process.exit(1);
   }
   
   // this is the whole design document
+  var dd;
   try {
-    var dd = JSON.parse(data);
+    dd = JSON.parse(data);
   } catch(e) {
     console.log("FAILED to parse file contents as JSON - cannot continue");
     process.exit(1);
@@ -262,4 +261,17 @@ fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
     console.log("FINISHED!!!");
   });
 
-});
+});};
+
+// load the design document
+var dd_filename = argv.dd;
+if (/\.js$/.test(dd_filename)) {
+  // use require to load js design doc
+  var path = require('path'),
+    dataAbs = path.join(process.cwd(), dd_filename.replace(/([^.]+)\.js$/, '$1'));
+
+  migrate(null, JSON.stringify(require(dataAbs)));
+} else {
+  // read json
+  fs.readFile(dd_filename, {encoding: "utf8"}, migrate);
+}
