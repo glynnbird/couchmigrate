@@ -8,9 +8,9 @@ var fs = require('fs'),
   
 // get COUCH_URL from the environment
 var COUCH_URL = null;
-if (typeof process.env.COUCH_URL == "undefined") {
+if (typeof process.env.COUCH_URL === 'undefined') {
   console.log("Please use environment variable COUCH_URL to indicate URL of your CouchDB/Cloudant");
-  console.log("  e.g. export COUCH_URL=http://127.0.0.1:5984")
+  console.log("  e.g. export COUCH_URL=http://127.0.0.1:5984");
   process.exit(1);
 } else {
   COUCH_URL = process.env.COUCH_URL;
@@ -38,7 +38,7 @@ var copydoc = function(from_id, to_id, cb) {
           from_doc = data;
         }
         callback(err, data);
-      })
+      });
     },
     
     // fetch the document we are copying to (if it is there)
@@ -50,7 +50,7 @@ var copydoc = function(from_id, to_id, cb) {
           to_doc = data;
         }
         callback(null, data);
-      })
+      });
     },
     
     // overwrite the destination
@@ -59,8 +59,8 @@ var copydoc = function(from_id, to_id, cb) {
       from_doc._id = to_id;
       if (to_doc) {
         from_doc._rev = to_doc._rev;
-      } else { 
-        delete from_doc._rev
+      } else {
+        delete from_doc._rev;
       }
       console.log("## copydoc - contents",from_doc);
       db.insert(from_doc, function(err, data) {
@@ -82,12 +82,12 @@ var writedoc = function(obj, docid, cb) {
           preexistingdoc = data;
         }
         callback(null, data);
-      })
+      });
     },
     function(callback) {
       obj._id = docid;
       if (preexistingdoc) {
-        obj._rev = preexistingdoc._rev
+        obj._rev = preexistingdoc._rev;
       }
       console.log("## writedoc - Writing doc", obj);
       db.insert(obj, function(err, data) {
@@ -95,7 +95,7 @@ var writedoc = function(obj, docid, cb) {
         callback(null, data);
       });
     }
-  ], cb)
+  ], cb);
 };
 
 var deletedoc = function(docid, cb) {
@@ -158,20 +158,20 @@ var migrate = function(err, data) {
         if(err) {
           console.log("!!!");
           return callback(null, null);
-        };
+        }
         var a = clone(data);
         var b = clone(dd);
         delete a._rev;
         delete a._id;
         delete b._rev;
         delete b._id;
-        if(JSON.stringify(a) == JSON.stringify(b)) {
+        if(JSON.stringify(a) === JSON.stringify(b)) {
           console.log("** The design document is the same, no need to migrate! **");
           callback(true,null);
         } else {
           callback(null,null);
         }
-      })
+      });
     },
        
     // copy original design document to _OLD
@@ -185,7 +185,7 @@ var migrate = function(err, data) {
     // write new design document to _NEW
     function(callback) {
       console.log("## write new design document to _NEW");
-      writedoc(dd, dd_new_name, callback)
+      writedoc(dd, dd_new_name, callback);
     },
     
     // trigger a new index.build
@@ -218,7 +218,7 @@ var migrate = function(err, data) {
                 debug(err,data);
                 numTasks = 0;
                 for(var i in data) {
-                  if(data[i].type != "view_compaction" && data[i].type != "replication") {
+                  if(data[i].type !== "view_compaction" && data[i].type !== "replication") {
                     numTasks++;
                   }
                 }
@@ -228,9 +228,9 @@ var migrate = function(err, data) {
 
             
           },
-          function () { return numTasks>0 },
+          function () { return numTasks>0; },
           function (err) {
-             callback(null, null)
+             callback(null, null);
           }
       );
     
@@ -261,7 +261,7 @@ var migrate = function(err, data) {
     console.log("FINISHED!!!");
   });
 
-});};
+};
 
 // load the design document
 var dd_filename = argv.dd;
