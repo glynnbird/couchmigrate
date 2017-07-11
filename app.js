@@ -8,7 +8,7 @@ var fs = require('fs'),
   
 // get COUCH_URL from the environment
 var COUCH_URL = null;
-if (typeof process.env.COUCH_URL == "undefined") {
+if (typeof process.env.COUCH_URL === 'undefined') {
   console.log("Please use environment variable COUCH_URL to indicate URL of your CouchDB/Cloudant");
   console.log("  e.g. export COUCH_URL=http://127.0.0.1:5984");
   process.exit(1);
@@ -128,17 +128,16 @@ var clone = function(x) {
   return JSON.parse(JSON.stringify(x));
 };
 
-// load the design document
-var dd_filename = argv.dd;
-fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
+var migrate = function(err, data) {
   if(err) {
     console.log("Cannot find file", dd_filename);
     process.exit(1);
   }
   
   // this is the whole design document
+  var dd;
   try {
-    var dd = JSON.parse(data);
+    dd = JSON.parse(data);
   } catch(e) {
     console.log("FAILED to parse file contents as JSON - cannot continue");
     process.exit(1);
@@ -169,14 +168,14 @@ fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
         if(err) {
           console.log("!!!");
           return callback(null, null);
-        };
+        }
         var a = clone(data);
         var b = clone(dd);
         delete a._rev;
         delete a._id;
         delete b._rev;
         delete b._id;
-        if(JSON.stringify(a) == JSON.stringify(b)) {
+        if(JSON.stringify(a) === JSON.stringify(b)) {
           console.log("** The design document is the same, no need to migrate! **");
           callback(true,null);
         } else {
@@ -196,7 +195,7 @@ fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
     // write new design document to _NEW
     function(callback) {
       console.log("## write new design document to _NEW");
-      writedoc(dd, dd_new_name, callback)
+      writedoc(dd, dd_new_name, callback);
     },
     
     // wait for the view build to complete, by polling
@@ -211,7 +210,6 @@ fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
             console.log("## query ", name, "/", v, "to validate freshness.");
 
             setTimeout(function() {
-
               db.view(name, v, { limit:1 }, function(err, data) {
                 debug(err, data);
 
@@ -281,4 +279,17 @@ fs.readFile(dd_filename, {encoding: "utf8"}, function(err, data) {
     console.log("FINISHED!!!");
   });
 
-});
+};
+
+// load the design document
+var dd_filename = argv.dd;
+if (/\.js$/.test(dd_filename)) {
+  // use require to load js design doc
+  var path = require('path'),
+    dataAbs = path.join(process.cwd(), dd_filename.replace(/([^.]+)\.js$/, '$1'));
+
+  migrate(null, JSON.stringify(require(dataAbs)));
+} else {
+  // read json
+  fs.readFile(dd_filename, {encoding: "utf8"}, migrate);
+}
