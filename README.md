@@ -41,7 +41,7 @@ If the design document is already present and is identical to the one in the fil
 * copy old design document to _OLD
 * import new design document to _NEW
 * trigger the view to make sure it builds
-* poll _active_tasks to see if it has finished building
+* poll the view to see if it has finished building
 * copy _NEW to the real design document name
 * delete _NEW 
 * delete _OLD
