@@ -144,10 +144,8 @@ var migrate = function(err, data) {
   }
 
   var dd_name = dd._id;
-  var original_dd = null;
-  var old_dd = null;
-  var new_dd = null;
   delete dd._rev;
+  var hasViews = true;
   var dd_old_name = dd_name + "_OLD";
   var dd_new_name = dd_name + "_NEW";
   
@@ -197,60 +195,87 @@ var migrate = function(err, data) {
       console.log("## write new design document to _NEW");
       writedoc(dd, dd_new_name, callback);
     },
-    
-    // wait for the view build to complete, by polling
+
+    // trigger a new index.build
     function(callback) {
-      var hasData = false;
+      var name = dd._id.replace(/_design\//, "");
+      var v;
+      var isSearch = false;
+      if (dd.views) {
+        v = Object.keys(dd.views)[0];
+      } else if (dd.indexes) {
+        isSearch = true;
+        v = Object.keys(dd.indexes)[0];
+      } else {
+        console.log("## Design document has no views, no deed to trigger view build")
+        hasViews = false;
+        return callback(null, null);
+      }
 
+      console.log("## trigger a new '" + (isSearch ? 'search' : 'view') + "' index.build after 3 sec for", name, "/", v);
+
+      // wait 3 seconds before querying the view
+      setTimeout(function() {
+        if (isSearch) {
+          db.search(name, v, { q: "xyz" }, function(err, data) {
+            debug(err, data);
+            // on a long view-build this request will timeout and return an 'err', which we can ignore
+            callback(null, null);
+          });
+        } else {
+          db.view(name, v, { limit: 1 }, function(err, data) {
+            debug(err, data);
+            // on a long view-build this request will timeout and return an 'err', which we can ignore
+            callback(null, null);
+          });
+        }
+      }, 3000);
+    },
+
+    // wait for the view build to complete, by polling _active_tasks
+    function(callback) {
+      // If design document has no views, no deed to wait for the view to be built
+      if(!hasViews){
+        return callback(null, null)
+      }
+
+      console.log("## wait 10 sec for the view build to complete, by polling _active_tasks");
+      var changes_done = 0;
+      var total_changes = 0;
+      var numTasks = 1;
       async.doWhilst(
-
-          function (callback) {
-            var name = dd._id.replace(/_design\//,"");
-            var v = Object.keys(dd.views)[0];
-            console.log("## query ", name, "/", v, "to validate freshness.");
-
-            setTimeout(function() {
-              db.view(name, v, { limit:1 }, function(err, data) {
-                debug(err, data);
-
-                // on a long view-build this request will timeout and return an 'err'.
-                // we should retry until this returns
-                hasData = !err && !!data;
-
-                if (err) {
-                  // get progress from active tasks
-                  nano.request({ path:"_active_tasks"}, function(err, data) {
-                    debug(err,data);
-                    var progress = 0;
-                    var shards = 0;
-                    for(var i in data) {
-                      var task = data[i];
-
-                      if (task.type === "indexer" && task.design_document === dd_new_name) {
-                        shards++;
-                        progress = progress + parseInt(task.progress, 10);
-                      }
-                    }
-
-                    var overallProgress = Math.floor(progress / shards);
-                    console.log('## indexing progress:', overallProgress, "%");
-                    callback(null, null);
-                  });
+      function(callback) {
+        setTimeout(function() {
+          nano.request({ path: "_active_tasks" }, function(err, data) {
+            debug(err, data);
+            console.log('rebuilding ' + argv.db + ' - ' + dd_name + ', indexes left: ' + (total_changes - changes_done));
+            changes_done = 0;
+            total_changes = 0;
+            numTasks = 0;
+            for (var i in data) {
+              var task = data[i];
+                var database = task.database != undefined ? task.database : "";
+                var databaseFromTask = database.substr(database.lastIndexOf("/") + 1, database.lastIndexOf(".") - database.lastIndexOf("/") - 1);
+                if ((task.type === "indexer" || task.type === "search_indexer") &&
+                  databaseFromTask === argv.db &&
+                  task.design_document === dd_new_name) {
+                  numTasks++;
+                  changes_done += task.changes_done;
+                  total_changes += task.total_changes;
                 }
-                else {
-                  callback(null, null);
-                }
-              });
-            }, 3000);
-
-          },
-          function () { return !hasData; },
-          function (err) {
-             callback(err, null);
-          }
+            }
+            callback(null, null);
+          });
+        // timeout increased as search_indexer tasks sometimes take longer before they appear in the task list
+        }, 10000);
+        },
+        function() { return numTasks > 0 },
+        function(err) {
+            callback(null, null)
+        }
       );
     },
-    
+
     // copy _NEW to live
     function(callback) {
       console.log("## copy _NEW to live", dd_new_name, dd_name);
