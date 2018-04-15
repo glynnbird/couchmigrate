@@ -2,18 +2,18 @@ var fs = require('fs'),
   async = require('async'),
   argv = require('yargs')
    .usage("CouchDB design document migration")
-   .usage('Usage: $0 --dd <design document filename> --db <name of database>')
+   .usage('Usage: $0 --dd <design document filename> --db <name of database> [--url <url of CouchDB/Cloudant>]')
    .demand(['dd','db'])
    .argv;
   
 // get COUCH_URL from the environment
 var COUCH_URL = null;
-if (typeof process.env.COUCH_URL === 'undefined') {
-  console.log("Please use environment variable COUCH_URL to indicate URL of your CouchDB/Cloudant");
+if (typeof process.env.COUCH_URL === 'undefined' && typeof argv.url === 'undefined') {
+  console.log("Please use environment variable COUCH_URL or --url argument to indicate URL of your CouchDB/Cloudant");
   console.log("  e.g. export COUCH_URL=http://127.0.0.1:5984");
   process.exit(1);
 } else {
-  COUCH_URL = process.env.COUCH_URL;
+  COUCH_URL = argv.url || process.env.COUCH_URL;
 }
 var nano = require('nano')( {
   url: COUCH_URL,
