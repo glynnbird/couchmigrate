@@ -48,12 +48,17 @@ or
 
     export COUCH_URL=https://myusername:mypassword@myhost.cloudant.com
 
+or
+
+    use --url command-line argument to pass the instance URL
+
 Then run `couchmigrate`:
 
-    couchmigrate --dd dd.json --db mydatabase
+    couchmigrate --dd dd.json --db mydatabase [--url http://127.0.0.1:5984]
 
 * dd - the path to the file containing the design documnet 
 * db - the name of the database
+* url - the URL of the CouchDB instance
 
 (if the file extension of `dd` is '.json', it is expected to be a JSON document, if it ends in '.js' it is expected to be a JavaScript file that can be `require`d in)
 
