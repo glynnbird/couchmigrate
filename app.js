@@ -8,17 +8,9 @@ const argv = require('yargs')
   .argv
 
 // get COUCH_URL from the environment
-const nano = require('nano')({
-  url: argv.url,
-  requestDefaults: {
-    timeout: 10000,
-    headers: {
-      'User-Agent': 'couchmigrate',
-      'x-cloudant-io-priority': 'low'
-    }
-  }
-})
-const db = nano.db.use(argv.database)
+let nano = null
+let db = null
+
 
 const debug = (err, data) => {
   console.log('  err = ', (err) ? 'true' : '')
@@ -269,13 +261,31 @@ const migrate = function (err, data) {
 
 // load the design document
 const ddFilename = argv.designdoc
-if (/\.js$/.test(ddFilename)) {
-  // use require to load js design doc
-  const path = require('path')
-  const dataAbs = path.join(process.cwd(), ddFilename.replace(/([^.]+)\.js$/, '$1'))
+const iam = require('./iam.js')
+iam.getToken(process.env.IAM_API_KEY).then((t) => {
+  const opts = {
+    url: argv.url,
+    requestDefaults: {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'couchmigrate',
+        'x-cloudant-io-priority': 'low'
+      }
+    }
+  }
+  if (t) {
+    opts.defaultHeaders = { Authorization: 'Bearer ' + t }
+  }
+  nano = require('nano')(opts)
+  db = nano.db.use(argv.database)
 
-  migrate(null, JSON.stringify(require(dataAbs)))
-} else {
-  // read json
-  fs.readFile(ddFilename, { encoding: 'utf8' }, migrate)
-}
+  if (/\.js$/.test(ddFilename)) {
+    // use require to load js design doc
+    const path = require('path')
+    const dataAbs = path.join(process.cwd(), ddFilename.replace(/([^.]+)\.js$/, '$1'))
+    migrate(null, JSON.stringify(require(dataAbs)))
+  } else {
+    // read json
+    fs.readFile(ddFilename, { encoding: 'utf8' }, migrate)
+  }
+})
