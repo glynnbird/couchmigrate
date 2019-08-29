@@ -69,3 +69,10 @@ If the design document is already present and is identical to the one in the fil
 * exit
 
 In other words, couchmigrate will only return when the design document has been uploaded, built and has been moved into place.
+
+## IAM Auth
+
+Alternatively, if you are using IAM authentication with IBM Cloudant, then supply two environment variables:
+
+- `COUCH_URL` - the URL of your Cloudant host e.g. `https://myhost.cloudant.com` (note absence of username and password in URL).
+- `IAM_API_KEY` - the IAM API KEY e.g. `ABC123515-151215`.
