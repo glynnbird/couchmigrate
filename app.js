@@ -11,7 +11,6 @@ const argv = require('yargs')
 let nano = null
 let db = null
 
-
 const debug = (err, data) => {
   console.log('  err = ', (err) ? 'true' : '')
   console.log('  data = ', JSON.stringify(data))
@@ -66,7 +65,7 @@ const copydoc = (fromId, toId, cb) => {
 }
 
 const writedoc = function (obj, docid, cb) {
-  var preexistingdoc = null
+  let preexistingdoc = null
   async.series([
     function (callback) {
       console.log('## writedoc - Looking for pre-existing', docid)
@@ -168,7 +167,9 @@ const migrate = function (err, data) {
     function (callback) {
       console.log('## copy original design document to _OLD')
       copydoc(ddName, ddOldName, function (err, data) {
-        if (err) { }
+        if (err) {
+          // do nothing
+        }
         callback(null, null)
       })
     },
@@ -204,7 +205,7 @@ const migrate = function (err, data) {
                   debug(err, data)
                   let progress = 0
                   let shards = 0
-                  for (var i in data) {
+                  for (const i in data) {
                     const task = data[i]
 
                     if (task.type === 'indexer' && task.design_document === ddNewName) {

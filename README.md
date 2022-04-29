@@ -14,7 +14,7 @@ Create a JSON file with your design document in e.g. dd.json
         "_id": "_design/fetch",
         "views": {
             "byx": {
-                "map": "function (doc) {\n  emit(doc.x, doc.y);\n  }\n}",
+                "map": "function (doc) {\n  emit(doc.x, doc.y);\n  }",
                 "reduce": "_stats"
             }
         },
