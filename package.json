@@ -1,6 +1,6 @@
 {
   "name": "couchmigrate",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "CouchDB design document migration tool",
   "repository": "https://github.com/glynnbird/couchmigrate.git",
   "keywords": [
