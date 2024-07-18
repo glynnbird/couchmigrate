@@ -1,11 +1,65 @@
 const fs = require('fs')
 const async = require('async')
-const argv = require('yargs')
-  .option('designdoc', { alias: 'dd', describe: 'design document filename', demand: true })
-  .option('database', { alias: 'db', describe: 'name of database', demand: true })
-  .option('url', { alias: 'u', describe: 'URL of CouchDB/Cloudant service', demand: !process.env.COUCH_URL, default: process.env.COUCH_URL })
-  .help('help')
-  .argv
+const syntax = 
+`Syntax:
+--url/-u           (COUCH_URL)      CouchDB URL              (required)
+--database/--db    (COUCH_DATABASE) CouchDB Datbase name     (required)
+--designdoc/--dd                    Design document filename (required)
+`
+const URL = process.env.COUCH_URL
+const DB = process.env.COUCH_DATABASE
+const { parseArgs } = require('node:util')
+const argv = process.argv.slice(2)
+const options = {
+  url: {
+    type: 'string',
+    short: 'u',
+    default: URL
+  },
+  database: {
+    type: 'string',
+    short: 'd',
+    default: DB
+  },
+  db: {
+    type: 'string',
+    default: DB
+  },
+  designdoc: {
+    type: 'string'
+  },
+  dd: {
+    type: 'string'
+  },
+  help: {
+    type: 'boolean',
+    short: 'h',
+    default: false
+  }
+}
+
+// parse command-line options
+const { values } = parseArgs({ argv, options })
+if (values.db) {
+  values.database = values.db
+  delete values.db
+}
+if (values.dd) {
+  values.designdoc = values.dd
+  delete values.dd
+}
+
+// help mode
+if (values.help) {
+  console.log(syntax)
+  process.exit(0)
+}
+
+// mandatory parameters
+if (!values.url || !values.designdoc || !values.database) {
+  console.log('You must supply a URL, database and design doc')
+  process.exit(1)
+}
 
 // get COUCH_URL from the environment
 let nano = null
@@ -135,7 +189,7 @@ const migrate = function (err, data) {
     function (callback) {
       console.log('## check db exists')
       // if it doesn't we'll get an 'err' and the async process will stop
-      nano.db.get(argv.db, function (err, data) {
+      nano.db.get(values.database, function (err, data) {
         debug(err, data)
         callback(err, data)
       })
@@ -261,11 +315,11 @@ const migrate = function (err, data) {
 }
 
 // load the design document
-const ddFilename = argv.designdoc
+const ddFilename = values.designdoc
 const iam = require('./iam.js')
 iam.getToken(process.env.IAM_API_KEY).then((t) => {
   const opts = {
-    url: argv.url,
+    url: values.url,
     requestDefaults: {
       timeout: 10000,
       headers: {
@@ -278,7 +332,7 @@ iam.getToken(process.env.IAM_API_KEY).then((t) => {
     opts.defaultHeaders = { Authorization: 'Bearer ' + t }
   }
   nano = require('nano')(opts)
-  db = nano.db.use(argv.database)
+  db = nano.db.use(values.database)
 
   if (/\.js$/.test(ddFilename)) {
     // use require to load js design doc
