@@ -1,6 +1,5 @@
 const fs = require('fs')
-const async = require('async')
-const syntax = 
+const syntax =
 `Syntax:
 --url/-u           (COUCH_URL)      CouchDB URL              (required)
 --database/--db    (COUCH_DATABASE) CouchDB Datbase name     (required)
@@ -71,109 +70,86 @@ const debug = (err, data) => {
   console.log('-------------------------------')
 }
 
-const copydoc = (fromId, toId, cb) => {
+const copydoc = async (fromId, toId) => {
   let fromDoc = null
   let toDoc = null
 
-  async.series([
-    // fetch the document we are copying
-    function (callback) {
-      console.log('## copydoc - Fetching from', fromId)
-      db.get(fromId, function (err, data) {
-        debug(err, data)
-        if (!err) {
-          fromDoc = data
-        }
-        callback(err, data)
-      })
-    },
+  // fetch the document we are copying
+  console.log('## copydoc - Fetching from', fromId)
+  try {
+    fromDoc = await db.get(fromId)
+  } catch {
+    console.log(`docId ${fromId} does not exist - nothing to do`)
+    return
+  }
 
-    // fetch the document we are copying to (if it is there)
-    function (callback) {
-      console.log('## copydoc - Fetching to', toId)
-      db.get(toId, function (err, data) {
-        debug(err, data)
-        if (!err) {
-          toDoc = data
-        }
-        callback(null, data)
-      })
-    },
+  // fetch the document we are copying to (if it is there)
+  try {
+    toDoc = await db.get(toId)
+  } catch {
+    // target not there
+  }
 
-    // overwrite the destination
-    function (callback) {
-      console.log('## copydoc - Writing new to', toId)
-      fromDoc._id = toId
-      if (toDoc) {
-        fromDoc._rev = toDoc._rev
-      } else {
-        delete fromDoc._rev
-      }
-      console.log('## copydoc - contents', fromDoc)
-      db.insert(fromDoc, function (err, data) {
-        debug(err, data)
-        callback(err, data)
-      })
-    }
-  ], cb)
+  // overwrite the destination
+  console.log('## copydoc - Writing new to', toId)
+  fromDoc._id = toId
+  if (toDoc) {
+    fromDoc._rev = toDoc._rev
+  } else {
+    delete fromDoc._rev
+  }
+  await db.insert(fromDoc)
 }
 
-const writedoc = function (obj, docid, cb) {
+const writedoc = async function (obj, docid) {
   let preexistingdoc = null
-  async.series([
-    function (callback) {
-      console.log('## writedoc - Looking for pre-existing', docid)
-      db.get(docid, function (err, data) {
-        debug(err, data)
-        if (!err) {
-          preexistingdoc = data
-        }
-        callback(null, data)
-      })
-    },
-    function (callback) {
-      obj._id = docid
-      if (preexistingdoc) {
-        obj._rev = preexistingdoc._rev
-      }
-      console.log('## writedoc - Writing doc', obj)
-      db.insert(obj, function (err, data) {
-        debug(err, data)
-        callback(err, data)
-      })
-    }
-  ], cb)
+  let data
+
+  console.log('## writedoc - Looking for pre-existing', docid)
+  try {
+    data = await db.get(docid)
+    preexistingdoc = data
+  } catch {
+    // doc does not exist
+  }
+  obj._id = docid
+  if (preexistingdoc) {
+    obj._rev = preexistingdoc._rev
+  }
+  console.log('## writedoc - Writing doc', obj)
+  data = await db.insert(obj)
+  debug(null, data)
 }
 
-const deletedoc = function (docid, cb) {
+const deletedoc = async function (docid) {
+  let data
   console.log('## deletedoc - Looking for docid', docid)
-  db.get(docid, function (err, data) {
-    debug(err, data)
-    if (err) {
-      return cb(null, null)
-    }
-    console.log('## deletedoc - Deleting ', docid, data._rev)
-    db.destroy(docid, data._rev, function (err, d) {
-      debug(err, d)
-      cb(null, null)
-    })
-  })
+  try {
+    data = await db.get(docid)
+  } catch {
+    return
+  }
+  debug(null, data)
+  console.log('## deletedoc - Deleting ', docid, data._rev)
+  await db.destroy(docid, data._rev)
 }
 
 const clone = function (x) {
   return JSON.parse(JSON.stringify(x))
 }
 
-const migrate = function (err, data) {
-  if (err) {
-    console.log('Cannot find file', ddFilename)
-    process.exit(1)
-  }
+// promisey-sleep
+const sleep = async (ms) => {
+  return new Promise((resolve, reject) => {
+    setTimeout(resolve, ms)
+  })
+}
 
+const migrate = async function (ddDocString) {
   // this is the whole design document
-  let dd
+  let dd, data
   try {
-    dd = JSON.parse(data)
+    dd = JSON.parse(ddDocString)
   } catch (e) {
     console.log('FAILED to parse file contents as JSON - cannot continue')
     process.exit(1)
@@ -184,140 +160,91 @@ const migrate = function (err, data) {
   const ddOldName = ddName + '_OLD'
   const ddNewName = ddName + '_NEW'
 
-  async.series([
-    // check that the database exists
-    function (callback) {
-      console.log('## check db exists')
-      // if it doesn't we'll get an 'err' and the async process will stop
-      nano.db.get(values.database, function (err, data) {
-        debug(err, data)
-        callback(err, data)
-      })
-    },
+  // check that the database exists
+  try {
+    console.log('## check db exists')
+    data = await nano.db.get(values.database)
+    debug(null, data)
+  } catch {
+    throw new Error('database does not exist')
+  }
 
-    // check that the existing view isn't the same as the incoming view
-    function (callback) {
-      db.get(ddName, function (err, data) {
-        if (err) {
-          console.log('!!!')
-          return callback(null, null)
-        }
-        const a = clone(data)
-        const b = clone(dd)
-        delete a._rev
-        delete a._id
-        delete b._rev
-        delete b._id
-        if (JSON.stringify(a) === JSON.stringify(b)) {
-          console.log('** The design document is the same, no need to migrate! **')
-          callback(new Error('design document is the same'), null)
-        } else {
-          callback(null, null)
-        }
-      })
-    },
-
-    // copy original design document to _OLD
-    function (callback) {
-      console.log('## copy original design document to _OLD')
-      copydoc(ddName, ddOldName, function (err, data) {
-        if (err) {
-          // do nothing
-        }
-        callback(null, null)
-      })
-    },
-
-    // write new design document to _NEW
-    function (callback) {
-      console.log('## write new design document to _NEW')
-      writedoc(dd, ddNewName, callback)
-    },
-
-    // wait for the view build to complete, by polling
-    function (callback) {
-      let hasData = false
-
-      async.doWhilst(
-
-        function (callback) {
-          const name = dd._id.replace(/_design\//, '')
-          const v = Object.keys(dd.views)[0]
-          console.log('## query ', name, '/', v, 'to validate freshness.')
-
-          setTimeout(function () {
-            db.view(name, v, { limit: 1 }, function (err, data) {
-              debug(err, data)
-
-              // on a long view-build this request will timeout and return an 'err'.
-              // we should retry until this returns
-              hasData = !err && !!data
-
-              if (err) {
-                // get progress from active tasks
-                nano.request({ path: '_active_tasks' }, function (err, data) {
-                  debug(err, data)
-                  let progress = 0
-                  let shards = 0
-                  for (const i in data) {
-                    const task = data[i]
-
-                    if (task.type === 'indexer' && task.design_document === ddNewName) {
-                      shards++
-                      progress = progress + parseInt(task.progress, 10)
-                    }
-                  }
-
-                  const overallProgress = Math.floor(progress / shards)
-                  console.log('## indexing progress:', overallProgress, '%')
-                  callback(null, null)
-                })
-              } else {
-                callback(null, null)
-              }
-            })
-          }, 3000)
-        },
-        function () { return !hasData },
-        function (err) {
-          callback(err, null)
-        }
-      )
-    },
-
-    // copy _NEW to live
-    function (callback) {
-      console.log('## copy _NEW to live', ddNewName, ddName)
-      copydoc(ddNewName, ddName, function (err, data) {
-        debug(err, data)
-        callback(err, data)
-      })
-    },
-
-    // delete the _OLD view
-    function (callback) {
-      console.log('## delete the _OLD view', ddOldName)
-      deletedoc(ddOldName, callback)
-    },
-
-    // delete the _NEW view
-    function (callback) {
-      console.log('## delete the _NEW view', ddNewName)
-      deletedoc(ddNewName, callback)
+  // check that the existing view isn't the same as the incoming view
+  try {
+    console.log('## check existing view is not the same as the incoming view')
+    data = await db.get(ddName)
+    const a = clone(data)
+    const b = clone(dd)
+    delete a._rev
+    delete a._id
+    delete b._rev
+    delete b._id
+    if (JSON.stringify(a) === JSON.stringify(b)) {
+      console.log('** The design document is the same, no need to migrate! **')
+      throw new Error('design document is the same')
     }
+  } catch {
+    // no pre-existing ddoc
+  }
 
-  ], function (err, data) {
-    if (err) {
-      console.log(err)
+  // copy original design document to _OLD
+  console.log('## copy original design document to _OLD')
+  await copydoc(ddName, ddOldName)
+
+  // write new design document to _NEW
+  console.log('## write new design document to _NEW')
+  await writedoc(dd, ddNewName)
+
+  // wait for the view build to complete, by polling
+  let hasData = false
+  do {
+    const name = dd._id.replace(/_design\//, '')
+    const v = Object.keys(dd.views)[0]
+    await sleep(3000)
+    console.log('## query ', name, '/', v, 'to validate freshness.')
+    try {
+      data = await db.view(name, v, { limit: 1 })
+      hasData = !!data
+    } catch {
+      // view timed out
     }
-    console.log('FINISHED!!!')
-  })
+    if (!hasData) {
+      // get progress from active tasks
+      data = await nano.request({ path: '_active_tasks' })
+      let progress = 0
+      let shards = 0
+      for (const i in data) {
+        const task = data[i]
+
+        if (task.type === 'indexer' && task.design_document === ddNewName) {
+          shards++
+          progress = progress + parseInt(task.progress, 10)
+        }
+      }
+      const overallProgress = Math.floor(progress / shards)
+      console.log('## indexing progress:', overallProgress, '%')
+    }
+  } while (!hasData)
+
+  // copy _NEW to live
+  console.log('## copy _NEW to live', ddNewName, ddName)
+  await copydoc(ddNewName, ddName)
+
+  // delete the _OLD view
+  console.log('## delete the _OLD view', ddOldName)
+  await deletedoc(ddOldName)
+
+  // delete the _NEW view
+  console.log('## delete the _NEW view', ddNewName)
+  await deletedoc(ddNewName)
+  console.log('FINISHED!!!')
 }
 
-// load the design document
-const ddFilename = values.designdoc
-const iam = require('./iam.js')
-iam.getToken(process.env.IAM_API_KEY).then((t) => {
+const main = async () => {
+  // load the design document
+  const ddFilename = values.designdoc
+  const iam = require('./iam.js')
+  const t = await iam.getToken(process.env.IAM_API_KEY)
   const opts = {
     url: values.url,
     requestDefaults: {
@@ -338,9 +265,11 @@ iam.getToken(process.env.IAM_API_KEY).then((t) => {
     // use require to load js design doc
     const path = require('path')
     const dataAbs = path.join(process.cwd(), ddFilename.replace(/([^.]+)\.js$/, '$1'))
-    migrate(null, JSON.stringify(require(dataAbs)))
+    await migrate(JSON.stringify(require(dataAbs)))
   } else {
     // read json
-    fs.readFile(ddFilename, { encoding: 'utf8' }, migrate)
+    const str = fs.readFileSync(ddFilename, { encoding: 'utf8' })
+    await migrate(str)
   }
-})
+}
+main()
