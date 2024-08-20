@@ -1,4 +1,6 @@
 const fs = require('fs')
+const ccurllib = require('ccurllib')
+const app = require('./package.json')
 const syntax =
 `Syntax:
 --url/-u           (COUCH_URL)      CouchDB URL              (required)
@@ -37,6 +39,18 @@ const options = {
   }
 }
 
+const getReqObj = (method) => {
+  const obj = {
+    method: method || 'get',
+    url: `${values.url}/${values.database}`,
+    headers: {
+      'content-type': 'application/json',
+      'User-Agent': `${app.name}/${app.version}`
+    }
+  }
+  return obj
+}
+
 // parse command-line options
 const { values } = parseArgs({ argv, options })
 if (values.db) {
@@ -60,12 +74,8 @@ if (!values.url || !values.designdoc || !values.database) {
   process.exit(1)
 }
 
-// get COUCH_URL from the environment
-let nano = null
-let db = null
-
-const debug = (err, data) => {
-  console.log('  err = ', (err) ? 'true' : '')
+const debug = (status, data) => {
+  console.log('  status = ', status)
   console.log('  data = ', JSON.stringify(data))
   console.log('-------------------------------')
 }
@@ -73,21 +83,25 @@ const debug = (err, data) => {
 const copydoc = async (fromId, toId) => {
   let fromDoc = null
   let toDoc = null
+  let req, requestDefaults
 
   // fetch the document we are copying
   console.log('## copydoc - Fetching from', fromId)
-  try {
-    fromDoc = await db.get(fromId)
-  } catch {
+  req = getReqObj()
+  req.url += `/${fromId}`
+  res = await ccurllib.request(req) //await db.get(fromId)
+  if (res.status >= 400){
     console.log(`docId ${fromId} does not exist - nothing to do`)
     return
   }
+  fromDoc = res.result
 
   // fetch the document we are copying to (if it is there)
-  try {
-    toDoc = await db.get(toId)
-  } catch {
-    // target not there
+  req = getReqObj()
+  req.url += `/${toId}`
+  res = await ccurllib.request(req) // await db.get(toId)
+  if (res.status < 300) {
+    toDoc = res.result
   }
 
   // overwrite the destination
@@ -98,7 +112,13 @@ const copydoc = async (fromId, toId) => {
   } else {
     delete fromDoc._rev
   }
-  await db.insert(fromDoc)
+  req = getReqObj()
+  req.data = fromDoc
+  req.method = 'post'
+  res = await ccurllib.request(req) // await db.insert(fromDoc)
+  if (res.status >= 300) {
+    throw new Error(`Could not copy from ${fromId} to ${toId} - HTTP ${res.status} ${res.result}`)
+  }
 }
 
 const writedoc = async function (obj, docid) {
@@ -106,32 +126,53 @@ const writedoc = async function (obj, docid) {
   let data
 
   console.log('## writedoc - Looking for pre-existing', docid)
-  try {
-    data = await db.get(docid)
-    preexistingdoc = data
-  } catch {
-    // doc does not exist
+  req = getReqObj()
+  req.url += `/${docid}`
+  res = await ccurllib.request(req) // await db.get(docid)
+  if (res.status < 300) {
+    preexistingdoc = res.result
   }
+
   obj._id = docid
   if (preexistingdoc) {
     obj._rev = preexistingdoc._rev
   }
   console.log('## writedoc - Writing doc', obj)
-  data = await db.insert(obj)
-  debug(null, data)
+  req = getReqObj()
+  req.data = obj
+  req.method = 'post'
+  res = await ccurllib.request(req) // data = await db.insert(obj)
+  debug(res.status, res.result)
+  if (res.status >= 300) {
+    throw new Error(`Could not write docId from ${docid} - HTTP ${res.status} ${res.result}`)
+  }
+  
 }
 
 const deletedoc = async function (docid) {
   let data
   console.log('## deletedoc - Looking for docid', docid)
-  try {
-    data = await db.get(docid)
-  } catch {
+  req = getReqObj()
+  req.url += `/${docid}`
+  res = await ccurllib.request(req) // await db.get(docid)
+  debug(res.status, res.result)
+  if (res.status >= 400) {
+    debug(null, `Document ${docid} does not exist`)
     return
   }
-  debug(null, data)
-  console.log('## deletedoc - Deleting ', docid, data._rev)
-  await db.destroy(docid, data._rev)
+
+  console.log('## deletedoc - Deleting ', docid, res.result._rev)
+  req = getReqObj()
+  req.url += `/${docid}`
+  req.qs = {}
+  req.qs.rev = res.result._rev
+  req.method = 'delete'
+  res = await ccurllib.request(req) // data = await db.insert(obj)
+  debug(res.status, res.result)
+  if (res.status >= 300) {
+    throw new Error(`Could not delete docId ${docId} - HTTP ${res.status} ${res.result}`)
+  }
+  // await db.destroy(docid, data._rev)
 }
 
 const clone = function (x) {
@@ -147,7 +188,7 @@ const sleep = async (ms) => {
 
 const migrate = async function (ddDocString) {
   // this is the whole design document
-  let dd, data
+  let dd, data, req, res
   try {
     dd = JSON.parse(ddDocString)
   } catch (e) {
@@ -161,30 +202,35 @@ const migrate = async function (ddDocString) {
   const ddNewName = ddName + '_NEW'
 
   // check that the database exists
-  try {
-    console.log('## check db exists')
-    data = await nano.db.get(values.database)
-    debug(null, data)
-  } catch {
-    throw new Error('database does not exist')
+  console.log('## check db exists')
+  req = getReqObj()
+  data = await ccurllib.request(req) // await nano.db.get(values.database)
+  debug(data.status, data.result)
+  if (data.status >= 400) {
+    console.error('databases does not exist')
+    process.exit(1)
   }
 
   // check that the existing view isn't the same as the incoming view
-  try {
-    console.log('## check existing view is not the same as the incoming view')
-    data = await db.get(ddName)
-    const a = clone(data)
-    const b = clone(dd)
-    delete a._rev
-    delete a._id
-    delete b._rev
-    delete b._id
-    if (JSON.stringify(a) === JSON.stringify(b)) {
-      console.log('** The design document is the same, no need to migrate! **')
-      throw new Error('design document is the same')
-    }
-  } catch {
-    // no pre-existing ddoc
+  console.log('## check existing view is not the same as the incoming view')
+  req = getReqObj()
+  req.url += `/${ddName}`
+  data = await ccurllib.request(req)
+  if (data.result > 300) {
+    res = ''
+  } else {
+    res = data.result
+  }
+  // data = await db.get(ddName)
+  const a = clone(res)
+  const b = clone(dd)
+  delete a._rev
+  delete a._id
+  delete b._rev
+  delete b._id
+  if (JSON.stringify(a) === JSON.stringify(b)) {
+    console.error('** The design document is the same, no need to migrate! **')
+    process.exit(2)
   }
 
   // copy original design document to _OLD
@@ -198,24 +244,29 @@ const migrate = async function (ddDocString) {
   // wait for the view build to complete, by polling
   let hasData = false
   do {
-    const name = dd._id.replace(/_design\//, '')
-    const v = Object.keys(dd.views)[0]
-    await sleep(3000)
-    console.log('## query ', name, '/', v, 'to validate freshness.')
-    try {
-      data = await db.view(name, v, { limit: 1 })
-      hasData = !!data
-    } catch {
-      // view timed out
+    hasDate = false
+    if (typeof dd.views === 'object' && Object.keys(dd.views).length > 0) {
+      const path = `${ddNewName}/_view/${Object.keys(dd.views)[0]}`
+      await sleep(3000)
+      console.log('## query ',path, 'to validate freshness.')
+      req = getReqObj()
+      req.url += '/' + path
+      req.qs = { limit: 1}
+      res = await ccurllib.request(req)
+      if (res.status < 300) {
+        hasData = true
+      }
     }
     if (!hasData) {
       // get progress from active tasks
-      data = await nano.request({ path: '_active_tasks' })
+      req = getReqObj()
+      req.url = `${values.url}/_active_tasks`
+      res = await ccurllib.request(req)
+      data = res.result
       let progress = 0
       let shards = 0
       for (const i in data) {
         const task = data[i]
-
         if (task.type === 'indexer' && task.design_document === ddNewName) {
           shards++
           progress = progress + parseInt(task.progress, 10)
@@ -243,23 +294,6 @@ const migrate = async function (ddDocString) {
 const main = async () => {
   // load the design document
   const ddFilename = values.designdoc
-  const iam = require('./iam.js')
-  const t = await iam.getToken(process.env.IAM_API_KEY)
-  const opts = {
-    url: values.url,
-    requestDefaults: {
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'couchmigrate',
-        'x-cloudant-io-priority': 'low'
-      }
-    }
-  }
-  if (t) {
-    opts.defaultHeaders = { Authorization: 'Bearer ' + t }
-  }
-  nano = require('nano')(opts)
-  db = nano.db.use(values.database)
 
   if (/\.js$/.test(ddFilename)) {
     // use require to load js design doc
