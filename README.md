@@ -25,11 +25,10 @@ or a JavaScript file that exports a design document object e.g.
 
 ```js
 var map = function(doc) {
-  emit(doc.name, null);
-};
+  emit(doc.name, null)
+}
 
-
-module.exports = {
+const dd =  {
   _id: "_design/testy",
   views: {
     test1: {
@@ -37,7 +36,9 @@ module.exports = {
       reduce: "_count"
     }
   }
-};
+}
+
+export default dd
 ```
 
 Then setup environment variables to point to your instance of CouchDB
@@ -55,7 +56,7 @@ Then run `couchmigrate`:
 * dd - the path to the file containing the design documnet 
 * db - the name of the database
 
-(if the file extension of `dd` is '.json', it is expected to be a JSON document, if it ends in '.js' it is expected to be a JavaScript file that can be `require`d in)
+(if the file extension of `dd` is '.json', it is expected to be a JSON document, if it ends in '.js' it is expected to be a JavaScript module that can be `import`ed in)
 
 If the design document is already present and is identical to the one in the file, no migration will occur, otherwise
 

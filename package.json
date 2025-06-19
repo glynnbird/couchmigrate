@@ -1,6 +1,7 @@
 {
   "name": "couchmigrate",
-  "version": "0.7.0",
+  "version": "1.0.0",
+  "type": "module",
   "description": "CouchDB design document migration tool",
   "repository": "https://github.com/glynnbird/couchmigrate.git",
   "keywords": [
@@ -12,7 +13,7 @@
   "author": "Glynn Bird",
   "license": "Apache-2.0",
   "dependencies": {
-    "ccurllib": "^3.0.1"
+    "ccurllib": "^4.0.1"
   },
   "bin": {
     "couchmigrate": "bin/couchmigrate.bin.js"

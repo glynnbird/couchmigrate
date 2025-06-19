@@ -1,2 +1,4 @@
 #!/usr/bin/env node
-require('../app.js')
+import couchmigrate from '../app.js'
+couchmigrate()
+

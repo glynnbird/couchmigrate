@@ -1,6 +1,9 @@
-const fs = require('fs')
-const ccurllib = require('ccurllib')
-const app = require('./package.json')
+import fs from 'node:fs'
+import path from 'node:path'
+import { parseArgs } from 'node:util'
+import * as ccurllib from 'ccurllib'
+
+const app = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'package.json'), { encoding: 'utf8' }))
 const syntax =
 `Syntax:
 --url/-u           (COUCH_URL)      CouchDB URL              (required)
@@ -9,7 +12,7 @@ const syntax =
 `
 const URL = process.env.COUCH_URL
 const DB = process.env.COUCH_DATABASE
-const { parseArgs } = require('node:util')
+
 const argv = process.argv.slice(2)
 const options = {
   url: {
@@ -83,7 +86,7 @@ const debug = (status, data) => {
 const copydoc = async (fromId, toId) => {
   let fromDoc = null
   let toDoc = null
-  let req, requestDefaults
+  let req, res
 
   // fetch the document we are copying
   console.log('## copydoc - Fetching from', fromId)
@@ -123,7 +126,7 @@ const copydoc = async (fromId, toId) => {
 
 const writedoc = async function (obj, docid) {
   let preexistingdoc = null
-  let data
+  let req, res
 
   console.log('## writedoc - Looking for pre-existing', docid)
   req = getReqObj()
@@ -150,7 +153,7 @@ const writedoc = async function (obj, docid) {
 }
 
 const deletedoc = async function (docid) {
-  let data
+  let req, res
   console.log('## deletedoc - Looking for docid', docid)
   req = getReqObj()
   req.url += `/${docid}`
@@ -244,7 +247,7 @@ const migrate = async function (ddDocString) {
   // wait for the view build to complete, by polling
   let hasData = false
   do {
-    hasDate = false
+    hasData = false
     if (typeof dd.views === 'object' && Object.keys(dd.views).length > 0) {
       const path = `${ddNewName}/_view/${Object.keys(dd.views)[0]}`
       await sleep(3000)
@@ -291,19 +294,18 @@ const migrate = async function (ddDocString) {
   console.log('FINISHED!!!')
 }
 
-const main = async () => {
+export default async function () {
   // load the design document
   const ddFilename = values.designdoc
 
   if (/\.js$/.test(ddFilename)) {
     // use require to load js design doc
-    const path = require('path')
-    const dataAbs = path.join(process.cwd(), ddFilename.replace(/([^.]+)\.js$/, '$1'))
-    await migrate(JSON.stringify(require(dataAbs)))
+    const dataAbs = path.join(process.cwd(), ddFilename)
+    const dd = await import(dataAbs)
+    await migrate(JSON.stringify(dd.default))
   } else {
     // read json
     const str = fs.readFileSync(ddFilename, { encoding: 'utf8' })
     await migrate(str)
   }
 }
-main()
